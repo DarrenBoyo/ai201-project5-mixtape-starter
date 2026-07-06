@@ -160,16 +160,16 @@ Changed the threshold to a shorter “now” window, such as `timedelta(minutes=
 ### Issue #3: The same song keeps showing up twice in search
 
 **How I reproduced it:**  
-Ran `pytest tests/test_search.py`. The multi-tag song test uses “Crown Heights Anthem,” which has three tags. The expected result is one copy of the song.
+I ran `pytest tests/test_search.py` and reviewed the search behavior for songs with multiple tags. The search is expected to return each matching song only once.
 
 **How I found the root cause:**  
-I looked at `routes/songs.py`, then traced the search route into `services/search_service.py`.
+I traced the search endpoint from `routes/songs.py` to `services/search_service.py`. The query joins the `Song` table with the `song_tags` association table before returning the results.
 
 **The root cause:**  
-`search_songs()` joined `Song` to `song_tags`, but it did not explicitly deduplicate the results. A song with multiple tag rows could appear multiple times after the join.
+Joining `Song` with `song_tags` can produce multiple database rows for a single song when that song has multiple tags. Because the query did not explicitly remove duplicate songs, the same song could appear multiple times in the search results.
 
-**My fix and side-effect check:**  
-Added deduplication, such as `.distinct()`, to the query. I checked searches for songs with no tags, one tag, and multiple tags to make sure all still return once.
+**Your fix and side-effect check:**  
+I added `.distinct()` to the SQLAlchemy query so duplicate `Song` rows are removed before the results are returned. I reran the search tests and verified that songs with zero, one, and multiple tags are still returned correctly while duplicate results are eliminated.
 
 ---
 
