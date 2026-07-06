@@ -9,9 +9,29 @@
 - Initializes the database.
 - Registers all application routes.
 
-#### models.py
-- Defines the SQLAlchemy database models used throughout the application.
-- Stores the relationships between users, songs, playlists, notifications, and other entities.
+### models.py
+
+`models.py` defines the database structure for the Mixtape app using SQLAlchemy.
+
+Main models:
+
+- `User`: represents app users. Stores username, email, listening streak, and last listened time.
+- `Song`: represents songs shared by users. Stores title, artist, album, genre, share note, and the user who shared it.
+- `Rating`: represents a user's rating for a song. Each user can only rate the same song once because of the unique constraint on `user_id` and `song_id`.
+- `Playlist`: represents a user-created playlist. Playlists can contain many songs.
+- `Notification`: stores notifications sent to users, such as when someone interacts with their song.
+- `ListeningEvent`: records when a user listens to a song.
+- `Tag`: stores labels/categories that can be attached to songs.
+
+Association tables:
+
+- `friendships`: connects users to other users as friends.
+- `song_tags`: connects songs to tags.
+- `playlist_entries`: connects playlists to songs and also stores the song position, who added it, and when it was added.
+
+Important pattern:
+
+The models store data and relationships, but they do not contain much business logic. Most feature logic is handled in the `services/` files.
 
 #### routes/
 
