@@ -151,3 +151,18 @@ Expected behavior:
 
 Actual behavior:
 - The feed included older activity from the previous day.
+### Issue #4: Rating a song does not create a notification
+
+How I reproduced it:
+- Ran `python seed_data.py`.
+- Started the Flask app.
+- Sent a `POST` request to `/songs/<song_id>/rate` using a valid user ID and score.
+- Checked the song owner’s notifications at `/users/<owner_user_id>/notifications`.
+
+Expected behavior:
+- The song owner should receive a notification when another user rates their song.
+
+Actual behavior:
+- The rating was saved, but no notification was created.
+
+---
