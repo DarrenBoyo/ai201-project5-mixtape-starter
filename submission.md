@@ -122,3 +122,32 @@ After reading the codebase, I noticed several design patterns:
   ```
 - Each service focuses on a single feature, making it easier to isolate bugs.
 - The README indicates that all five bugs are located in the service layer, so debugging should begin by tracing requests from the routes into the corresponding service functions.
+
+
+### Issue #5: The last song in a playlist never shows up
+
+How I reproduced it:
+- Seeded the database with `python seed_data.py`.
+- Started the app with `flask run`.
+- Opened `/playlists/a3028f41-e377-4aae-bcfd-429989dfb0f6/songs`.
+- The seeded playlist should contain 7 songs, but the response returned only 6.
+
+Expected behavior:
+- The endpoint should return all 7 songs in the playlist.
+
+Actual behavior:
+- The endpoint returned only 6 songs, meaning the last song was missing.
+
+### Issue #2: Friends Listening Now shows people from yesterday
+
+How I reproduced it:
+- Seeded the database with `python seed_data.py`.
+- Started the app with `flask run`.
+- Opened `/feed/9e7dddd6-66c5-473e-b8f4-8a814c2f08ca/listening-now`.
+- The response included a friend activity from the previous day.
+
+Expected behavior:
+- The feed should only show recent listening events, such as activity from the past 30 minutes.
+
+Actual behavior:
+- The feed included older activity from the previous day.
