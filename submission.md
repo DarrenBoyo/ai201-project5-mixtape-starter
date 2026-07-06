@@ -129,17 +129,16 @@ After reading the codebase, I noticed several design patterns:
 ### Issue #1: My listening streak keeps resetting
 
 **How I reproduced it:**  
-Ran `pytest tests/test_streaks.py`. The Sunday streak test failed. The test listens on Saturday, then Sunday, and expects the streak to increase from 1 to 2.
+I ran `pytest tests/test_streaks.py`. The test `test_streak_increments_on_sunday` failed. It listened on Saturday, then Sunday, and expected the streak to increase from 1 to 2, but the streak reset to 1.
 
 **How I found the root cause:**  
-I traced the issue from `routes/songs.py` → `record_listening_event()` → `services/streak_service.py` → `update_listening_streak()`.
+I traced the failing test into `services/streak_service.py`, specifically `update_listening_streak()`. The failure happened only when the second listen was on Sunday, so I focused on the condition that checks `days_since_last == 1` and the weekday.
 
 **The root cause:**  
-The streak logic checked `days_since_last == 1 and today.weekday() != 6`. In Python, `weekday() == 6` means Sunday, so the code refused to increment the streak on Sunday even when the user listened on Saturday and then Sunday.
+Python’s `datetime.weekday()` returns `6` for Sunday. The code only incremented the streak when `days_since_last == 1` and the current day was not Sunday. Because Sunday was excluded, a valid Saturday-to-Sunday listen was treated as a reset instead of a consecutive day.
 
-**My fix and side-effect check:**  
-Removed the Sunday exception so any true consecutive day increments the streak. I checked same-day listening, skipped-day reset, and new-user streak behavior to make sure those still worked.
-
+**Your fix and side-effect check:**  
+I removed the Sunday exclusion so any listen exactly one day after the previous listen increments the streak. I reran `pytest tests/test_streaks.py` to confirm the Sunday test passed and the other streak tests still passed.
 ---
 
 ### Issue #2: Friends Listening Now shows people from yesterday
