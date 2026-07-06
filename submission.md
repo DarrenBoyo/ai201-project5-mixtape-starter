@@ -124,45 +124,82 @@ After reading the codebase, I noticed several design patterns:
 - The README indicates that all five bugs are located in the service layer, so debugging should begin by tracing requests from the routes into the corresponding service functions.
 
 
-### Issue #5: The last song in a playlist never shows up
+## Root Cause Analysis
 
-How I reproduced it:
-- Seeded the database with `python seed_data.py`.
-- Started the app with `flask run`.
-- Opened `/playlists/a3028f41-e377-4aae-bcfd-429989dfb0f6/songs`.
-- The seeded playlist should contain 7 songs, but the response returned only 6.
+### Issue #1: My listening streak keeps resetting
 
-Expected behavior:
-- The endpoint should return all 7 songs in the playlist.
+**How I reproduced it:**  
+Ran `pytest tests/test_streaks.py`. The Sunday streak test failed. The test listens on Saturday, then Sunday, and expects the streak to increase from 1 to 2.
 
-Actual behavior:
-- The endpoint returned only 6 songs, meaning the last song was missing.
+**How I found the root cause:**  
+I traced the issue from `routes/songs.py` → `record_listening_event()` → `services/streak_service.py` → `update_listening_streak()`.
+
+**The root cause:**  
+The streak logic checked `days_since_last == 1 and today.weekday() != 6`. In Python, `weekday() == 6` means Sunday, so the code refused to increment the streak on Sunday even when the user listened on Saturday and then Sunday.
+
+**My fix and side-effect check:**  
+Removed the Sunday exception so any true consecutive day increments the streak. I checked same-day listening, skipped-day reset, and new-user streak behavior to make sure those still worked.
+
+---
 
 ### Issue #2: Friends Listening Now shows people from yesterday
 
-How I reproduced it:
-- Seeded the database with `python seed_data.py`.
-- Started the app with `flask run`.
-- Opened `/feed/9e7dddd6-66c5-473e-b8f4-8a814c2f08ca/listening-now`.
-- The response included a friend activity from the previous day.
+**How I reproduced it:**  
+Seeded the database, started Flask, then opened `/feed/<nova_user_id>/listening-now`. The feed included activity older than the “listening now” window.
 
-Expected behavior:
-- The feed should only show recent listening events, such as activity from the past 30 minutes.
+**How I found the root cause:**  
+I traced `routes/feed.py` to `services/feed_service.py`, specifically `get_friends_listening_now()`.
 
-Actual behavior:
-- The feed included older activity from the previous day.
-### Issue #4: Rating a song does not create a notification
+**The root cause:**  
+`RECENT_THRESHOLD` was set to `timedelta(hours=24)`, so the feed treated anything from the last 24 hours as “listening now.” That allowed yesterday’s activity to appear.
 
-How I reproduced it:
-- Ran `python seed_data.py`.
-- Started the Flask app.
-- Sent a `POST` request to `/songs/<song_id>/rate` using a valid user ID and score.
-- Checked the song owner’s notifications at `/users/<owner_user_id>/notifications`.
-
-Expected behavior:
-- The song owner should receive a notification when another user rates their song.
-
-Actual behavior:
-- The rating was saved, but no notification was created.
+**My fix and side-effect check:**  
+Changed the threshold to a shorter “now” window, such as `timedelta(minutes=30)`. I checked that recent friend activity still appears, while older activity no longer appears.
 
 ---
+
+### Issue #3: The same song keeps showing up twice in search
+
+**How I reproduced it:**  
+Ran `pytest tests/test_search.py`. The multi-tag song test uses “Crown Heights Anthem,” which has three tags. The expected result is one copy of the song.
+
+**How I found the root cause:**  
+I looked at `routes/songs.py`, then traced the search route into `services/search_service.py`.
+
+**The root cause:**  
+`search_songs()` joined `Song` to `song_tags`, but it did not explicitly deduplicate the results. A song with multiple tag rows could appear multiple times after the join.
+
+**My fix and side-effect check:**  
+Added deduplication, such as `.distinct()`, to the query. I checked searches for songs with no tags, one tag, and multiple tags to make sure all still return once.
+
+---
+
+### Issue #4: I got notified when a friend added my song to a playlist but not when they rated it
+
+**How I reproduced it:**  
+Sent a POST request to `/songs/<song_id>/rate` with another user’s `user_id` and a score. Then I checked the song owner’s notifications at `/users/<owner_user_id>/notifications`. The rating was saved, but no rating notification appeared.
+
+**How I found the root cause:**  
+I traced `routes/songs.py` → `rate_song()` in `services/notification_service.py`. I compared it to `add_to_playlist()`, which already creates a notification.
+
+**The root cause:**  
+`rate_song()` created or updated a `Rating`, committed it, and returned it, but never called `create_notification()`. Playlist additions had notification logic, but ratings did not.
+
+**My fix and side-effect check:**  
+Added a notification after a successful rating when the rater is not the song owner. I checked that the rating still saves and that self-ratings do not notify the user about their own action.
+
+---
+
+### Issue #5: The last song in a playlist never shows up
+
+**How I reproduced it:**  
+Seeded the database and opened `/playlists/<playlist_id>/songs`. The seeded playlist should have 7 songs, but the response returned only 6.
+
+**How I found the root cause:**  
+I traced `routes/playlists.py` → `get_playlist_songs()` in `services/playlist_service.py`.
+
+**The root cause:**  
+The service queried all songs correctly, but returned `songs[:-1]`. That slice removes the final item from the list every time.
+
+**My fix and side-effect check:**  
+Changed the return statement to return every song: `[song.to_dict() for song in songs]`. I checked that playlists still return songs in position order and that empty playlists still return an empty list.
